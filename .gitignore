@@ -133,3 +133,6 @@ dmypy.json
 
 # Environment files
 .env
+
+# DB
+chat_history.db

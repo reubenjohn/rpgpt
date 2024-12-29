@@ -2,39 +2,80 @@ import logging
 from typing import Optional
 import streamlit as st
 
-from token_world.llm.xplore.db import MilestoneModel, PropertyModel, session_scope
+from token_world.llm.xplore.db import (
+    MilestoneModel,
+    PropertyModel,
+    StorylineModel,
+    session_scope,
+)
+from token_world.llm.xplore.session_state import get_active_storyline
 
 
-def get_storyline() -> Optional[str]:
+def get_active_storyline_description() -> Optional[str]:
     with session_scope() as session:
-        storyline = session.query(PropertyModel).filter(PropertyModel.key == "storyline").first()
+        storyline = (
+            session.query(StorylineModel)
+            .where(StorylineModel.name == get_active_storyline())
+            .first()
+        )
         if not storyline:
             return "There is no explicit storyline, this game is in unscripted mode."
-        return storyline.value
+        return storyline.description
 
 
 def storyline_form():
-    st.header("📖 Storyline")
+    with session_scope() as session:
+        with st.form(key="new_storyline"):
+            storyline_name = st.text_input("Storyline Name")
+            if st.form_submit_button("➕ New Storyline"):
+                new_storyline = StorylineModel(name=storyline_name, description="")
+                session.add(new_storyline)
+                session.commit()
+                st.session_state.active_storyline = storyline_name
+                st.success("New storyline added!")
+                st.rerun()
+
+        storylines = session.query(StorylineModel).all()
+        storyline_name = st.selectbox(
+            "Select a storyline", [storyline.name for storyline in storylines]
+        )
+        logging.info(f"Selected storyline: {storyline_name}")
+        storyline = (
+            session.query(StorylineModel).filter(StorylineModel.name == storyline_name).first()
+        )
+        if not storyline:
+            return
+        st.session_state.active_storyline = storyline_name
+        storyline_name = storyline.name
+        storyline_description = storyline.description
+        session.merge(PropertyModel(key="active_storyline", value=storyline_name))
+        session.commit()
+
+    st.subheader("📖 Storyline")
     with st.form(key="storyline_form"):
         with session_scope() as session:
-            storyline = (
-                session.query(PropertyModel).filter(PropertyModel.key == "storyline").first()
-            )
-            storyline = st.text_area(
+            storyline_description = st.text_area(
                 "Enter the AI character prompt here...",
-                value=storyline.value if storyline else None,
+                value=storyline_description if storyline else None,
                 height=300,
             )
         save_button = st.form_submit_button("Save")
         if save_button:
             with session_scope() as session:
-                session.merge(PropertyModel(key="storyline", value=storyline))
+                session.merge(
+                    StorylineModel(name=storyline_name, description=storyline_description)
+                )
                 session.commit()
             st.success("Storyline saved!")
 
     st.header("📚 Milestones")
     with session_scope() as session:
-        milestones = session.query(MilestoneModel).order_by(MilestoneModel.order).all()
+        milestones = (
+            session.query(MilestoneModel)
+            .where(MilestoneModel.storyline_name == get_active_storyline())
+            .order_by(MilestoneModel.order)
+            .all()
+        )
         for milestone in milestones:
             with st.form(key=f"edit_milestone_form_{milestone.name}"):
                 milestone_order = st.text_input("Milestone Number", value=milestone.order)
@@ -50,7 +91,8 @@ def storyline_form():
                         with session_scope() as session:
                             milestone_to_update = (
                                 session.query(MilestoneModel)
-                                .filter(MilestoneModel.name == milestone.name)
+                                .where(MilestoneModel.storyline_name == get_active_storyline())
+                                .where(MilestoneModel.name == milestone.name)
                                 .first()
                             )
                             milestone_to_update.name = milestone_name
@@ -63,7 +105,8 @@ def storyline_form():
                         with session_scope() as session:
                             milestone_to_delete = (
                                 session.query(MilestoneModel)
-                                .filter(MilestoneModel.name == milestone.name)
+                                .where(MilestoneModel.storyline_name == get_active_storyline())
+                                .where(MilestoneModel.name == milestone.name)
                                 .first()
                             )
                             session.delete(milestone_to_delete)
@@ -81,6 +124,7 @@ def storyline_form():
             if add_button:
                 with session_scope() as session:
                     new_milestone = MilestoneModel(
+                        storyline_name=get_active_storyline(),
                         name=milestone_name,
                         order=milestone_order,
                         description=milestone_description,
@@ -95,6 +139,7 @@ def storyline_form():
 def get_active_milestone(session) -> Optional[MilestoneModel]:
     milestone = (
         session.query(MilestoneModel)
+        .where(MilestoneModel.storyline_name == get_active_storyline())
         .where(MilestoneModel.completed.is_(False))
         .order_by(MilestoneModel.order)
         .first()
@@ -122,7 +167,10 @@ def get_active_milestone_markdown() -> str:
 def mark_milestone_completed(milestone_name: str):
     with session_scope() as session:
         milestone = (
-            session.query(MilestoneModel).filter(MilestoneModel.name == milestone_name).first()
+            session.query(MilestoneModel)
+            .where(MilestoneModel.storyline_name == get_active_storyline())
+            .where(MilestoneModel.name == milestone_name)
+            .first()
         )
         logging.info(f"Marking milestone '{milestone_name}' as completed...")
         if milestone:

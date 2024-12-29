@@ -12,6 +12,7 @@ from token_world.llm.xplore.db import (
 )
 from token_world.llm.xplore.goal_agent import show_goal_management
 from token_world.llm.xplore.milestone_agent import show_milestone_management
+from token_world.llm.xplore.session_state import get_active_storyline
 from token_world.llm.xplore.summarize_agent import (
     draw_conversation_summary,
 )
@@ -20,7 +21,12 @@ from token_world.llm.xplore.summarize_agent import (
 def draw_conversation():
     st.header("💬 Chat")
     with session_scope() as session:
-        messages = session.query(MessageModel).order_by(MessageModel.id).all()
+        messages = (
+            session.query(MessageModel)
+            .where(MessageModel.storyline_name == get_active_storyline())
+            .order_by(MessageModel.id)
+            .all()
+        )
         for message in messages:
             msg = message.content_dict
             with st.chat_message("user" if msg["role"] == "user" else "assistant"):
@@ -31,12 +37,12 @@ def draw_conversation():
                     with col2:
                         if st.button("🗑️", key=f"delete_{message.id}"):
                             logging.info(f"Deleting message {message.id}")
-                            session.query(MessageModel).filter(
-                                MessageModel.id >= message.id
-                            ).delete()
-                            session.query(SummaryModel).filter(
-                                SummaryModel.summary_until_id >= message.id
-                            ).delete()
+                            session.query(MessageModel).where(
+                                MessageModel.storyline_name == get_active_storyline()
+                            ).where(MessageModel.id >= message.id).delete()
+                            session.query(SummaryModel).where(
+                                MessageModel.storyline_name == get_active_storyline()
+                            ).where(SummaryModel.summary_until_id >= message.id).delete()
                             session.commit()
                             st.rerun()
                             return
@@ -72,7 +78,9 @@ def draw_assistant_message(existing_message: Optional[MessageModel], session):
     with col3:
         if existing_message and st.button("🗑️", key=f"delete_{message_id}"):
             logging.info(f"Deleting message {existing_message.id}")
-            session.query(MessageModel).filter(MessageModel.id >= existing_message.id).delete()
+            session.query(MessageModel).where(
+                MessageModel.storyline_name == get_active_storyline()
+            ).filter(MessageModel.id >= existing_message.id).delete()
             session.commit()
             st.rerun()
             return
@@ -81,10 +89,12 @@ def draw_assistant_message(existing_message: Optional[MessageModel], session):
         return
 
     if existing_message:
-        session.query(MessageModel).filter(MessageModel.id >= existing_message.id).delete()
-        session.query(SummaryModel).filter(
-            SummaryModel.summary_until_id >= existing_message.id
-        ).delete()
+        session.query(MessageModel).where(
+            MessageModel.storyline_name == get_active_storyline()
+        ).where(MessageModel.id >= existing_message.id).delete()
+        session.query(SummaryModel).where(
+            SummaryModel.storyline_name == get_active_storyline()
+        ).where(SummaryModel.summary_until_id >= existing_message.id).delete()
         session.commit()
 
     conversation = draw_conversation_summary(session)
@@ -108,6 +118,8 @@ def draw_assistant_message(existing_message: Optional[MessageModel], session):
         with st.spinner("Regenerating response..."):
             msg = existing_message.content_dict
             msg["content"] = response_text
-            session.add(MessageModel(content=json.dumps(msg)))
+            session.add(
+                MessageModel(storyline_name=get_active_storyline(), content=json.dumps(msg))
+            )
     session.commit()
     st.rerun()

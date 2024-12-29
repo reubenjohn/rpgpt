@@ -13,6 +13,7 @@ from token_world.llm.xplore.goals import (
     random_goal_completion_output,
 )
 from token_world.llm.xplore.llm import handle_base_model_arg, llm_client
+from token_world.llm.xplore.session_state import get_active_storyline
 from token_world.llm.xplore.storyline import get_active_milestone_markdown
 from token_world.llm.xplore.summarize_agent import (
     SummaryConversation,
@@ -60,12 +61,19 @@ def handle_goal_creation(response_text: str):
         if not goal_name or not goal_description:
             st.error(f"Goal name or description are empty: {goal_name=}, {goal_description=}.")
         with session_scope() as session:
-            if session.query(AgentGoalModel).filter(AgentGoalModel.name == goal_name).count() > 0:
+            if (
+                session.query(AgentGoalModel)
+                .where(AgentGoalModel.storyline_name == get_active_storyline())
+                .where(AgentGoalModel.name == goal_name)
+                .count()
+                > 0
+            ):
                 st.error(f"Goal '{goal_name}' already exists.")
                 logging.warning(f"Goal '{goal_name}' already exists.")
                 continue
             session.add(
                 AgentGoalModel(
+                    storyline_name=get_active_storyline(),
                     name=goal_name,
                     description=goal_description,
                     completed=False,
@@ -78,7 +86,7 @@ def handle_goal_creation(response_text: str):
 
 
 def generate_completed_goals(
-    summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
+    storyline: str, summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
 ) -> Iterator[str]:
     model = handle_base_model_arg(model)
     try:
@@ -136,7 +144,7 @@ ALWAYS OUTPUT 'GOAL CLASSIFICATIONS:' FOLLOWED BY THIS JSON OBJECT AT THE END.
 
 For example:
 ---
-{random_goal_completion_output()}
+{random_goal_completion_output(storyline)}
 """,
             },
         ]
@@ -162,7 +170,7 @@ For example:
 
 
 def generate_new_goals(
-    summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
+    storyline: str, summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
 ) -> Iterator[str]:
     model = handle_base_model_arg(model)
     try:
@@ -243,7 +251,7 @@ ALWAYS OUTPUT 'NEW GOALS:' FOLLOWED BY THIS JSON OBJECT AT THE END.
 
 For example:
 ---
-{random_goal_completion_output()}
+{random_goal_completion_output(storyline)}
 """,
             },
         ]
@@ -268,12 +276,15 @@ For example:
         return logging.error(f"Error generating response: {e}", exc_info=True)
 
 
-def show_goal_completion_classification(summary: SummaryConversation):
+def show_goal_completion_classification(storyline: str, summary: SummaryConversation):
     with st.spinner("Detecting completed goals..."):
         logging.info("Detecting completed goals...")
         with session_scope() as session:
             n_incomplete_goals = (
-                session.query(AgentGoalModel).filter(AgentGoalModel.completed.is_(False)).count()
+                session.query(AgentGoalModel)
+                .where(AgentGoalModel.storyline_name == storyline)
+                .where(AgentGoalModel.completed.is_(False))
+                .count()
             )
             if n_incomplete_goals == 0:
                 st.write("All goals completed.")
@@ -284,6 +295,7 @@ def show_goal_completion_classification(summary: SummaryConversation):
             st.warning("No messages to process.")
             return
         stream = generate_completed_goals(
+            storyline,
             str(summary.latest_summary.content) if summary.latest_summary else "",
             current_messages.ai.content_val if current_messages.ai else "",
             current_messages.user.content_val,
@@ -294,12 +306,15 @@ def show_goal_completion_classification(summary: SummaryConversation):
     st.write("Goal completion classification complete.")
 
 
-def show_goal_creation(summary: SummaryConversation):
+def show_goal_creation(storyline: str, summary: SummaryConversation):
     with st.spinner("Determining if new goals need to be created..."):
         logging.info("Detecting completed goals...")
         with session_scope() as session:
             n_incomplete_goals = (
-                session.query(AgentGoalModel).filter(AgentGoalModel.completed.is_(False)).count()
+                session.query(AgentGoalModel)
+                .where(AgentGoalModel.storyline_name == storyline)
+                .where(AgentGoalModel.completed.is_(False))
+                .count()
             )
             if n_incomplete_goals > 5:
                 st.warning("Too many incomplete goals. Skipping goal creation.")
@@ -310,6 +325,7 @@ def show_goal_creation(summary: SummaryConversation):
             st.warning("No messages to process.")
             return
         stream = generate_new_goals(
+            storyline,
             str(summary.latest_summary.content) if summary.latest_summary else "",
             current_messages.ai.content_val if current_messages.ai else "",
             current_messages.user.content_val,

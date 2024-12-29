@@ -11,6 +11,7 @@ from token_world.llm.xplore.db import (
     SummaryModel,
 )
 from token_world.llm.xplore.llm import handle_base_model_arg, llm_client
+from token_world.llm.xplore.session_state import get_active_storyline
 
 SYSTEM_PROMPT = "You are a helpful assistant who is an expert and providing detailed summaries of "
 "conversations."
@@ -22,9 +23,11 @@ def get_summary_conversation(
     max_messages: int = 8,
     min_messages: int = 2,
 ) -> SummaryConversation:
-    new_messages_query = session.query(MessageModel)
+    new_messages_query = session.query(MessageModel).where(
+        MessageModel.storyline_name == get_active_storyline()
+    )
     if latest_message:
-        new_messages_query.filter(MessageModel.id <= latest_message.id)
+        new_messages_query.where(MessageModel.id <= latest_message.id)
     new_messages = new_messages_query.order_by(MessageModel.id.desc()).limit(max_messages).all()
     new_messages = list(reversed(new_messages))
     logging.debug(
@@ -35,6 +38,7 @@ def get_summary_conversation(
 
     latest_summary = (
         session.query(SummaryModel)
+        .where(SummaryModel.storyline_name == get_active_storyline())
         .where(SummaryModel.summary_until_id < new_messages[-min_messages].id)
         .order_by(SummaryModel.summary_until_id.desc())
         .first()
@@ -43,7 +47,8 @@ def get_summary_conversation(
     logging.debug(f"Found latest summary ID: {latest_summary_id}")
     messages_to_summarize = (
         session.query(MessageModel)
-        .filter(
+        .where(MessageModel.storyline_name == get_active_storyline())
+        .where(
             MessageModel.id > latest_summary_id, MessageModel.id < new_messages[-min_messages].id
         )
         .all()
@@ -134,7 +139,9 @@ def draw_conversation_summary(
                     stream = generate_summary(conversation)
                     text_content = st.write_stream(stream)
                     conversation = SummaryModel(
-                        summary_until_id=messages_to_summarize[-1].id, content=text_content
+                        storyline_name=get_active_storyline(),
+                        summary_until_id=messages_to_summarize[-1].id,
+                        content=text_content,
                     )
                     session.add(conversation)
                     session.commit()

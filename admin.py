@@ -3,7 +3,13 @@ from dotenv import find_dotenv, load_dotenv
 import pandas as pd
 import streamlit as st
 
-from token_world.llm.xplore.db import MessageModel, SummaryModel, get_all_tables, session_scope
+from token_world.llm.xplore.db import (
+    MessageModel,
+    SummaryModel,
+    get_all_tables,
+    session_scope,
+)
+from token_world.llm.xplore.session_state import get_active_storyline
 
 
 @st.cache_data
@@ -23,14 +29,18 @@ def admin_panel():
         if st.button("🧹 Clear Conversation"):
             st.session_state["messages"] = []
             with session_scope() as session:
-                session.query(MessageModel).delete()
+                session.query(MessageModel).where(
+                    MessageModel.storyline_name == get_active_storyline()
+                ).delete()
                 session.commit()
                 st.rerun()
 
     with col3:
         if st.button("🧹 Clear Summaries"):
             with session_scope() as session:
-                session.query(SummaryModel).delete()
+                session.query(SummaryModel).where(
+                    SummaryModel.storyline_name == get_active_storyline()
+                ).delete()
                 session.commit()
                 st.rerun()
 

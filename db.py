@@ -6,6 +6,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, te
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from token_world.llm.xplore.session_state import get_active_storyline
+
 
 DB_PATH = "sqlite:///chat_history.db"
 
@@ -33,9 +35,16 @@ def session_scope():
         session.close()
 
 
+class StorylineModel(Base):
+    __tablename__ = "storylines"
+    name = Column(String, primary_key=True, nullable=False)
+    description = Column(Text, nullable=False)
+
+
 class MessageModel(Base):
     __tablename__ = "messages"
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    storyline_name = Column(String, primary_key=True, nullable=False)
+    id = Column(Integer, primary_key=True, nullable=False)
     content = Column(Text, nullable=False)
 
     @property
@@ -53,12 +62,14 @@ class MessageModel(Base):
 
 class SummaryModel(Base):
     __tablename__ = "summaries"
+    storyline_name = Column(String, primary_key=True, nullable=False)
     summary_until_id = Column(Integer, primary_key=True)
     content = Column(Text, nullable=False)
 
 
 class AgentGoalModel(Base):
     __tablename__ = "agent_goals"
+    storyline_name = Column(String, primary_key=True, nullable=False)
     name = Column(String, primary_key=True, nullable=False)
     description = Column(Text, nullable=False)
     completed = Column(Boolean, nullable=False)
@@ -67,6 +78,7 @@ class AgentGoalModel(Base):
 
 class MilestoneModel(Base):
     __tablename__ = "milestones"
+    storyline_name = Column(String, primary_key=True, nullable=False)
     name = Column(String, primary_key=True, nullable=False)
     order = Column(Integer, primary_key=False, nullable=False)
     description = Column(Text, nullable=False)
@@ -75,6 +87,7 @@ class MilestoneModel(Base):
 
 class CharacterModel(Base):
     __tablename__ = "characters"
+    storyline_name = Column(String, primary_key=True, nullable=False)
     type = Column(String, primary_key=True, nullable=False)
     name = Column(Text, nullable=False)
 
@@ -92,7 +105,12 @@ def initialize_db():
 
 def get_character_name(character_type: str) -> str:
     with session_scope() as session:
-        player = session.query(CharacterModel).filter(CharacterModel.type == character_type).first()
+        player = (
+            session.query(CharacterModel)
+            .where(CharacterModel.storyline_name == get_active_storyline())
+            .where(CharacterModel.type == character_type)
+            .first()
+        )
         return player.name if player else "Player"
 
 
@@ -106,16 +124,9 @@ def get_character1_name() -> str:
 
 # Save message to database
 def add_message_to_db(message: Message, session):
-    message_model = MessageModel(content=json.dumps(message))
+    message_model = MessageModel(storyline_name=get_active_storyline(), content=json.dumps(message))
     session.add(message_model)
     return message_model
-
-
-# Retrieve messages from database
-def load_messages_from_db() -> list[Message]:
-    with session_scope() as session:
-        messages = session.query(MessageModel).order_by(MessageModel.id).all()
-        return [message.content_dict for message in messages]
 
 
 def save_agent_goal(goal: AgentGoalModel):
@@ -125,7 +136,12 @@ def save_agent_goal(goal: AgentGoalModel):
 
 def load_goals_from_db() -> list[AgentGoalModel]:
     with session_scope() as session:
-        return session.query(AgentGoalModel).order_by(AgentGoalModel.name).all()
+        return (
+            session.query(AgentGoalModel)
+            .where(AgentGoalModel.storyline_name == get_active_storyline())
+            .order_by(AgentGoalModel.name)
+            .all()
+        )
 
 
 def get_all_tables():

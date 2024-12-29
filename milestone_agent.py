@@ -11,7 +11,7 @@ from token_world.llm.xplore.storyline import (
     get_active_milestone,
     get_active_milestone_classification_example,
     get_active_milestone_markdown,
-    get_storyline,
+    get_active_storyline_description,
     mark_milestone_completed,
 )
 from token_world.llm.xplore.summarize_agent import (
@@ -73,7 +73,7 @@ def generate_milestone_classification(
   as either INCOMPLETE/COMPLETE based on the conversation so far?
 
 Let's me start by giving you some context about the overall storyline of the game:
-{get_storyline()}
+{get_active_storyline_description()}
 
 {summary_prompt}And here are the most recent messages:
 ## Recent Messages

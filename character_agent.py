@@ -5,12 +5,14 @@ from swarm import Agent  # type: ignore[import]
 
 from token_world.llm.stream_processing import MessageStream, ToolStream, parse_streaming_response
 from token_world.llm.xplore.db import (
+    MilestoneModel,
     PropertyModel,
     get_character1_name,
     session_scope,
 )
 from token_world.llm.xplore.goals import get_active_goals_markdown
 from token_world.llm.xplore.llm import handle_base_model_arg, llm_client
+from token_world.llm.xplore.session_state import get_active_storyline
 from token_world.llm.xplore.summarize_agent import SummaryConversation
 
 
@@ -21,6 +23,34 @@ def get_system_prompt(character_name) -> str:
         if not storyline:
             raise ValueError("Storyline not found in the database")
         return storyline.value.replace("{character_name}", character_name)
+
+
+def get_milestone_prompt() -> str:
+    with session_scope() as session:
+        milestones_query = session.query(MilestoneModel).where(
+            MilestoneModel.storyline_name == get_active_storyline()
+        )
+        n_completed_milestones = milestones_query.where(MilestoneModel.completed.is_(True)).count()
+        n_milestones = milestones_query.count()
+        active_milestone = (
+            milestones_query.where(MilestoneModel.completed.is_(False))
+            .order_by(MilestoneModel.order)
+            .first()
+        )
+        if not active_milestone:
+            return (
+                "<All milestones have been completed the storyline may now head in any direction>"
+            )
+        return (
+            f"We are currently at milestone ({n_completed_milestones + 1}/{n_milestones}) "
+            + f"""'{active_milestone.name}' described as:
+{active_milestone.description}
+
+---
+
+'{get_character1_name()}' must steer the conversation towards the completion of the milestone.
+"""
+        )
 
 
 def generate_character_response(
@@ -60,7 +90,10 @@ The persistence levels are: Low, Medium, High, Forever.
 A goal marked as 'Forever' should be pursued indefinitely.
 A goal marked as 'Low' for example, may not be pursued with the utmost urgency.
 
-{character1_name} must ensure that the responses align with these goals.
+{get_milestone_prompt()}
+
+{character1_name} must ensure that the responses align with these goals
+ whilst making progress towards completing the milestone.
 A response can vary widely in size but the upper limit is usually a few paragraphs
  unless it is obvious it should be longer.""",
             }

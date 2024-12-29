@@ -1,10 +1,23 @@
 import streamlit as st
-from token_world.llm.xplore.db import CharacterModel, session_scope
+from token_world.llm.xplore.db import (
+    CharacterModel,
+    session_scope,
+)
+from token_world.llm.xplore.session_state import get_active_storyline
 
 
 def character_editor():
     with session_scope() as session:
-        characters = session.query(CharacterModel).order_by(CharacterModel.name).all()
+        if (storyline := get_active_storyline()) is None:
+            st.error("Please select a storyline to get started.")
+            return
+
+        characters = (
+            session.query(CharacterModel)
+            .where(CharacterModel.storyline_name == storyline)
+            .order_by(CharacterModel.name)
+            .all()
+        )
         col1, col2, col3 = st.columns([2, 4, 1])
         col1.write("Type")
         col2.write("Name")
@@ -24,6 +37,6 @@ def character_editor():
         character_type = st.selectbox("Type", ["player1", "character1"], key="character_type")
         name = st.text_input("Name", key="character_name")
         if st.button("Add Character"):
-            session.add(CharacterModel(type=character_type, name=name))
+            session.add(CharacterModel(storyline_name=storyline, type=character_type, name=name))
             session.commit()
             st.rerun()
