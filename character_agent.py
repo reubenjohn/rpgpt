@@ -6,23 +6,30 @@ from swarm import Agent  # type: ignore[import]
 from token_world.llm.stream_processing import MessageStream, ToolStream, parse_streaming_response
 from token_world.llm.xplore.db import (
     MilestoneModel,
-    PropertyModel,
     get_character1_name,
     session_scope,
 )
 from token_world.llm.xplore.goals import get_active_goals_markdown
 from token_world.llm.xplore.llm import handle_base_model_arg, llm_client
 from token_world.llm.xplore.session_state import get_active_storyline
+from token_world.llm.xplore.storyline import get_active_storyline_description
 from token_world.llm.xplore.summarize_agent import SummaryConversation
 
 
 # Define initial system prompt for storyline
-def get_system_prompt(character_name) -> str:
-    with session_scope() as session:
-        storyline = session.query(PropertyModel).filter(PropertyModel.key == "storyline").first()
-        if not storyline:
-            raise ValueError("Storyline not found in the database")
-        return storyline.value.replace("{character_name}", character_name)
+def get_system_prompt() -> str:
+    character_name = get_character1_name()
+    storyline = get_active_storyline()
+    if not storyline:
+        raise ValueError("Storyline not found in the database")
+    storyline_description = get_active_storyline_description()
+    return f"""You are '{character_name}' a character in a roleplaying game.
+In addition to playing the role of '{character_name}', you also cater to 'Meta requests'.
+These requests are usually prefixed with 'Meta request:' and are used to manage the game's progression.
+
+The storyline of the game is as follows:
+{storyline_description}
+"""
 
 
 def get_milestone_prompt() -> str:
@@ -95,7 +102,11 @@ A goal marked as 'Low' for example, may not be pursued with the utmost urgency.
 {character1_name} must ensure that the responses align with these goals
  whilst making progress towards completing the milestone.
 A response can vary widely in size but the upper limit is usually a few paragraphs
- unless it is obvious it should be longer.""",
+ unless it is obvious it should be longer.
+Reminder: 'Meta requests' aren't visible to {character1_name}
+ and are used to manage the game's progression.
+Responses should be styled to include the character's thoughts, feelings, actions, 
+ as well as vivid details such as appearances of characters, sights, tastes, smells, etc.""",
             }
         )
         all_messages.append(msgs[-1])
@@ -103,7 +114,7 @@ A response can vary widely in size but the upper limit is usually a few paragrap
         agent = Agent(
             name=character1_name,
             model=model,
-            instructions=get_system_prompt(character1_name),
+            instructions=get_system_prompt(),
             stream=True,
         )
 

@@ -130,6 +130,21 @@ def get_active_goals_markdown(exclude_forever: bool = False) -> str:
         """
 
 
+def get_too_many_goals_warning() -> str:
+    with session_scope() as session:
+        n_goals = (
+            session.query(AgentGoalModel)
+            .where(AgentGoalModel.storyline_name == get_active_storyline())
+            .where(AgentGoalModel.completed.is_(False))
+            .count()
+        )
+        if n_goals > 3:
+            return f"""*Note*: {n_goals} goals are already active.
+This is a lot of goals to keep track of, only create a new goal if absolutely necessary.
+Consider completing some of them before creating new ones."""
+        return ""
+
+
 def mark_goal_completed(goal_name: str):
     with session_scope() as session:
         goal = (

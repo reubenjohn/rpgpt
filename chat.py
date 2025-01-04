@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Optional
 import streamlit as st
@@ -41,7 +40,7 @@ def draw_conversation():
                                 MessageModel.storyline_name == get_active_storyline()
                             ).where(MessageModel.id >= message.id).delete()
                             session.query(SummaryModel).where(
-                                MessageModel.storyline_name == get_active_storyline()
+                                SummaryModel.storyline_name == get_active_storyline()
                             ).where(SummaryModel.summary_until_id >= message.id).delete()
                             session.commit()
                             st.rerun()
@@ -118,8 +117,6 @@ def draw_assistant_message(existing_message: Optional[MessageModel], session):
         with st.spinner("Regenerating response..."):
             msg = existing_message.content_dict
             msg["content"] = response_text
-            session.add(
-                MessageModel(storyline_name=get_active_storyline(), content=json.dumps(msg))
-            )
+            add_message_to_db(msg, session)
     session.commit()
     st.rerun()

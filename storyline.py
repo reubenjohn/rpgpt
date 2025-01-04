@@ -6,6 +6,7 @@ from token_world.llm.xplore.db import (
     MilestoneModel,
     PropertyModel,
     StorylineModel,
+    get_character1_name,
     session_scope,
 )
 from token_world.llm.xplore.session_state import get_active_storyline
@@ -18,9 +19,10 @@ def get_active_storyline_description() -> Optional[str]:
             .where(StorylineModel.name == get_active_storyline())
             .first()
         )
+        character1_name = get_character1_name()
         if not storyline:
             return "There is no explicit storyline, this game is in unscripted mode."
-        return storyline.description
+        return storyline.description.replace("{character_name}", character1_name)
 
 
 def storyline_form():
@@ -59,6 +61,7 @@ def storyline_form():
                 value=storyline_description if storyline else None,
                 height=300,
             )
+
         save_button = st.form_submit_button("Save")
         if save_button:
             with session_scope() as session:
@@ -67,6 +70,21 @@ def storyline_form():
                 )
                 session.commit()
             st.success("Storyline saved!")
+
+        delete_button = st.form_submit_button("🗑️ Delete")
+        if delete_button:
+            with session_scope() as session:
+                storyline_to_delete = (
+                    session.query(StorylineModel)
+                    .where(StorylineModel.name == storyline_name)
+                    .first()
+                )
+                if storyline_to_delete:
+                    session.delete(storyline_to_delete)
+                    session.commit()
+                    st.success(f"Storyline '{storyline_name}' deleted!")
+                    st.session_state.active_storyline = None
+                    st.rerun()
 
     st.header("📚 Milestones")
     with session_scope() as session:

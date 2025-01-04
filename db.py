@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 import json
 from typing import Any
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, func, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -124,7 +124,16 @@ def get_character1_name() -> str:
 
 # Save message to database
 def add_message_to_db(message: Message, session):
-    message_model = MessageModel(storyline_name=get_active_storyline(), content=json.dumps(message))
+    max_id = (
+        session.query(func.max(MessageModel.id))
+        .where(MessageModel.storyline_name == get_active_storyline())
+        .scalar()
+    )
+    if max_id is None:
+        max_id = 0
+    message_model = MessageModel(
+        storyline_name=get_active_storyline(), id=max_id + 1, content=json.dumps(message)
+    )
     session.add(message_model)
     return message_model
 

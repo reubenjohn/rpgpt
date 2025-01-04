@@ -9,6 +9,7 @@ from token_world.llm.xplore.conversation import get_current_messages
 from token_world.llm.xplore.db import AgentGoalModel, session_scope
 from token_world.llm.xplore.goals import (
     get_active_goals_markdown,
+    get_too_many_goals_warning,
     mark_goal_completed,
     random_goal_completion_output,
 )
@@ -86,7 +87,7 @@ def handle_goal_creation(response_text: str):
 
 
 def generate_completed_goals(
-    storyline: str, summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
+    summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
 ) -> Iterator[str]:
     model = handle_base_model_arg(model)
     try:
@@ -144,7 +145,7 @@ ALWAYS OUTPUT 'GOAL CLASSIFICATIONS:' FOLLOWED BY THIS JSON OBJECT AT THE END.
 
 For example:
 ---
-{random_goal_completion_output(storyline)}
+{random_goal_completion_output()}
 """,
             },
         ]
@@ -170,7 +171,7 @@ For example:
 
 
 def generate_new_goals(
-    storyline: str, summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
+    summary: str, ai_prompt: str, user_prompt: str, model: Optional[str] = None
 ) -> Iterator[str]:
     model = handle_base_model_arg(model)
     try:
@@ -209,8 +210,10 @@ Given the currently active milestone, the existing incomplete goals
  can you suggest if any new goals that the AI character should to pursue?
 Or, if no new goals are required, provide your reasoning.
 A general rule of thumb is to have 1-3 goals at a time. No more, no less.
+{get_too_many_goals_warning()}
 A goal is something that the AI character should strive to achieve over multiple turns.
 Don't suggest a goal that can be achieved in one turn.
+Keep in mind, that *most of the time, no new goals are required*.
 Think step-by-step showing your thought process, but don't overcomplicate things,
  keep the reasoning simple and concise, and then provide your answer.
 Your answer must be in the format:
@@ -251,7 +254,7 @@ ALWAYS OUTPUT 'NEW GOALS:' FOLLOWED BY THIS JSON OBJECT AT THE END.
 
 For example:
 ---
-{random_goal_completion_output(storyline)}
+{random_goal_completion_output()}
 """,
             },
         ]
@@ -276,13 +279,13 @@ For example:
         return logging.error(f"Error generating response: {e}", exc_info=True)
 
 
-def show_goal_completion_classification(storyline: str, summary: SummaryConversation):
+def show_goal_completion_classification(summary: SummaryConversation):
     with st.spinner("Detecting completed goals..."):
         logging.info("Detecting completed goals...")
         with session_scope() as session:
             n_incomplete_goals = (
                 session.query(AgentGoalModel)
-                .where(AgentGoalModel.storyline_name == storyline)
+                .where(AgentGoalModel.storyline_name == get_active_storyline())
                 .where(AgentGoalModel.completed.is_(False))
                 .count()
             )
@@ -295,7 +298,6 @@ def show_goal_completion_classification(storyline: str, summary: SummaryConversa
             st.warning("No messages to process.")
             return
         stream = generate_completed_goals(
-            storyline,
             str(summary.latest_summary.content) if summary.latest_summary else "",
             current_messages.ai.content_val if current_messages.ai else "",
             current_messages.user.content_val,
@@ -306,13 +308,13 @@ def show_goal_completion_classification(storyline: str, summary: SummaryConversa
     st.write("Goal completion classification complete.")
 
 
-def show_goal_creation(storyline: str, summary: SummaryConversation):
+def show_goal_creation(summary: SummaryConversation):
     with st.spinner("Determining if new goals need to be created..."):
         logging.info("Detecting completed goals...")
         with session_scope() as session:
             n_incomplete_goals = (
                 session.query(AgentGoalModel)
-                .where(AgentGoalModel.storyline_name == storyline)
+                .where(AgentGoalModel.storyline_name == get_active_storyline())
                 .where(AgentGoalModel.completed.is_(False))
                 .count()
             )
@@ -325,7 +327,6 @@ def show_goal_creation(storyline: str, summary: SummaryConversation):
             st.warning("No messages to process.")
             return
         stream = generate_new_goals(
-            storyline,
             str(summary.latest_summary.content) if summary.latest_summary else "",
             current_messages.ai.content_val if current_messages.ai else "",
             current_messages.user.content_val,
