@@ -3,7 +3,11 @@ from typing import Iterator, Optional
 import streamlit as st
 from swarm import Agent  # type: ignore[import]
 
-from token_world.llm.stream_processing import MessageStream, ToolStream, parse_streaming_response
+from token_world.llm.stream_processing import (
+    MessageStream,
+    ToolStream,
+    parse_streaming_response,
+)
 from token_world.llm.xplore.db import (
     MilestoneModel,
     get_character1_name,
@@ -25,7 +29,7 @@ def get_system_prompt() -> str:
     storyline_description = get_active_storyline_description()
     return f"""You are '{character_name}' a character in a roleplaying game.
 In addition to playing the role of '{character_name}', you also cater to 'Meta requests'.
-These requests are usually prefixed with 'Meta request:' and are used to manage the game's progression.
+These requests are prefixed with 'Meta request:' and are used to manage the game's progression.
 
 The storyline of the game is as follows:
 {storyline_description}
@@ -37,7 +41,9 @@ def get_milestone_prompt() -> str:
         milestones_query = session.query(MilestoneModel).where(
             MilestoneModel.storyline_name == get_active_storyline()
         )
-        n_completed_milestones = milestones_query.where(MilestoneModel.completed.is_(True)).count()
+        n_completed_milestones = milestones_query.where(
+            MilestoneModel.completed.is_(True)
+        ).count()
         n_milestones = milestones_query.count()
         active_milestone = (
             milestones_query.where(MilestoneModel.completed.is_(False))
@@ -46,7 +52,8 @@ def get_milestone_prompt() -> str:
         )
         if not active_milestone:
             return (
-                "<All milestones have been completed the storyline may now head in any direction>"
+                "<All milestones have been completed the storyline may now head in "
+                "any direction>"
             )
         return (
             f"We are currently at milestone ({n_completed_milestones + 1}/{n_milestones}) "

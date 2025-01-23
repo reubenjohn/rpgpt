@@ -10,6 +10,7 @@ from token_world.llm.xplore.db import (
     session_scope,
 )
 from token_world.llm.xplore.goal_agent import show_goal_management
+from token_world.llm.xplore.image import draw_image_prompt
 from token_world.llm.xplore.milestone_agent import show_milestone_management
 from token_world.llm.xplore.session_state import get_active_storyline
 from token_world.llm.xplore.summarize_agent import (
@@ -41,7 +42,9 @@ def draw_conversation():
                             ).where(MessageModel.id >= message.id).delete()
                             session.query(SummaryModel).where(
                                 SummaryModel.storyline_name == get_active_storyline()
-                            ).where(SummaryModel.summary_until_id >= message.id).delete()
+                            ).where(
+                                SummaryModel.summary_until_id >= message.id
+                            ).delete()
                             session.commit()
                             st.rerun()
                             return
@@ -69,12 +72,23 @@ def draw_chat_input():
 
 def draw_assistant_message(existing_message: Optional[MessageModel], session):
     message_id = existing_message.id if existing_message else "draft"
-    col1, col2, col3 = st.columns([1, 2, 4])
+    col1, col2, col3, col4 = st.columns([1, 2, 2, 2])
     with col1:
         st.write(message_id)
     with col2:
         regenerate = st.button("🔃 Regenerate", key=f"regenerate_{message_id}")
+
+    conversation = draw_conversation_summary(session)
+    if not conversation:
+        st.error("Summary required...")
+        st.rerun()
+        return
+
     with col3:
+        if st.button("🖼️ Image Prompt", key=f"image_{message_id}"):
+            draw_image_prompt(conversation)
+
+    with col4:
         if existing_message and st.button("🗑️", key=f"delete_{message_id}"):
             logging.info(f"Deleting message {existing_message.id}")
             session.query(MessageModel).where(
@@ -83,6 +97,7 @@ def draw_assistant_message(existing_message: Optional[MessageModel], session):
             session.commit()
             st.rerun()
             return
+
     if existing_message and not regenerate:
         st.markdown(existing_message.content_dict["content"])
         return
@@ -95,12 +110,6 @@ def draw_assistant_message(existing_message: Optional[MessageModel], session):
             SummaryModel.storyline_name == get_active_storyline()
         ).where(SummaryModel.summary_until_id >= existing_message.id).delete()
         session.commit()
-
-    conversation = draw_conversation_summary(session)
-    if not conversation:
-        st.error("Summary required...")
-        st.rerun()
-        return
 
     with st.spinner("Managing milestones..."):
         show_milestone_management()
