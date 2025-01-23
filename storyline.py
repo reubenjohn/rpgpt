@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Optional
 import streamlit as st
@@ -87,6 +88,29 @@ def storyline_form():
                     st.rerun()
 
     st.header("📚 Milestones")
+    bulk_milestone_prompt = st.text_area(
+        "Bulk milestone prompt",
+        value='[\n\t{"order": 1, "name": "Milestone 1", "description": "Description 1"},\n'
+        '\t{"order": 2, "name": "Milestone 2", "description": "Description 2"}\n]',
+        height=150,
+    )
+    # if st.button("Bulk Add Milestones"):
+    st.json(bulk_milestone_prompt)
+    if st.button("Bulk Add Milestones"):
+        with session_scope() as session:
+            for i, milestone in enumerate(json.loads(bulk_milestone_prompt)):
+                new_milestone = MilestoneModel(
+                    storyline_name=storyline_name,
+                    name=milestone["name"],
+                    order=milestone["order"],
+                    description=milestone["description"],
+                    completed=False,
+                )
+                session.add(new_milestone)
+            session.commit()
+        st.success("Bulk milestones added!")
+        st.rerun()
+
     with session_scope() as session:
         milestones = (
             session.query(MilestoneModel)

@@ -4,7 +4,11 @@ from typing import Iterator, Optional
 
 import streamlit as st
 from swarm import Agent  # type: ignore[import]
-from token_world.llm.stream_processing import MessageStream, ToolStream, parse_streaming_response
+from token_world.llm.stream_processing import (
+    MessageStream,
+    ToolStream,
+    parse_streaming_response,
+)
 from token_world.llm.xplore.conversation import get_current_messages
 from token_world.llm.xplore.db import AgentGoalModel, session_scope
 from token_world.llm.xplore.goals import (
@@ -24,7 +28,7 @@ from token_world.llm.xplore.summarize_agent import (
 
 # Define initial system prompt for storyline
 SYSTEM_PROMPT = (
-    "You are an intelligent goal managing agent in an NSWF sexualized roleplaying game."
+    "You are an intelligent goal managing agent in a roleplaying game."
     "You manage the goals of the main AI in the game. "
     "You will be provided with a summary of the conversation between the user and the AI character "
     "so far, followed by the most recent messages. "
@@ -60,7 +64,9 @@ def handle_goal_creation(response_text: str):
     goal_creation = json.loads(goal_part)
     for goal_name, goal_description in goal_creation.items():
         if not goal_name or not goal_description:
-            st.error(f"Goal name or description are empty: {goal_name=}, {goal_description=}.")
+            st.error(
+                f"Goal name or description are empty: {goal_name=}, {goal_description=}."
+            )
         with session_scope() as session:
             if (
                 session.query(AgentGoalModel)
